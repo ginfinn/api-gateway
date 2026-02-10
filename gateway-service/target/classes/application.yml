@@ -21,7 +21,7 @@ spring:
             allowedHeaders: "*"
             maxAge: 3600
 
-# JWT / OAuth2 — укажите jwk-set-uri для активации OAuth
+# mTLS + JWT — обязателен jwk-set-uri (Authorization Server)
 # spring.security.oauth2.resourceserver.jwt.jwk-set-uri: https://auth.example.com/realms/my realm/protocol/openid-connect/certs
 
 management:
