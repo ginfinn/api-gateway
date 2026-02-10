@@ -1,6 +1,6 @@
-# Nginx (mTLS) + Spring Boot Gateway (OAuth, Rate Limit)
+# Nginx (mTLS) + Spring Boot Gateway (mTLS + JWT, Rate Limit)
 
-Архитектура: **mTLS в Nginx** → **OAuth и rate limiting в Spring Boot**.
+Архитектура: **mTLS + JWT** — transport (Nginx) и авторизация (Gateway).
 
 ```
 ┌─────────────────────┐     JWT      ┌─────────────────────────────┐
@@ -8,7 +8,7 @@
 │ Server              │   token      │ (client credentials)         │
 │ (Keycloak и т.д.)   │              └──────────────┬──────────────┘
 └─────────────────────┘                             │
-                                                    │ Запрос (mTLS или Bearer)
+                                                    │ Запрос (mTLS + Bearer JWT)
                                                     ▼
 ┌─────────────────────────────────────────────────────────────────────────────┐
 │  NGINX (mTLS)                                                                │
@@ -59,7 +59,7 @@ docker compose up -d
 ```
 
 - **https://localhost:8443** — Nginx (mTLS), проксирует в Gateway
-- **http://localhost:8080** — Gateway (для отладки, без mTLS)
+- **http://localhost:8080** — Gateway (для отладки, без mTLS — /api/** вернёт 401)
 
 ### 3. Тест с клиентским сертификатом
 
@@ -73,18 +73,18 @@ curl -k --cert nginx/certs/client-cp-a.crt --key nginx/certs/client-cp-a.key \
 | Компонент | Файл | Назначение |
 |-----------|------|------------|
 | Nginx | nginx/nginx.conf | mTLS, proxy_pass → gateway:8080 |
-| Gateway | ../gateway-service | OAuth2 JWT, rate limit, audit |
+| Gateway | ../gateway-service | mTLS+JWT, rate limit, audit |
 | Сертификаты | nginx/certs/ | CA, server, client certs |
 
-## OAuth2
+## mTLS + JWT
 
-Для включения OAuth2 укажите в `gateway-service/application.yml` или переменных окружения:
+Оба обязательны. Укажите в `gateway-service/application.yml`:
 
 ```yaml
 spring.security.oauth2.resourceserver.jwt.jwk-set-uri: https://keycloak.example.com/realms/myrealm/protocol/openid-connect/certs
 ```
 
-Без этой настройки аутентификация возможна только через mTLS (клиентский сертификат).
+Без jwk-set-uri Gateway вернёт 401 для /api/**.
 
 ## Тестовые контрагенты
 

@@ -10,14 +10,11 @@
 ┌─────────────────────────────────────────────────────────────────────────────────────────────┐
 │                              КОНТРАГЕНТЫ (внешние системы)                                   │
 │                                                                                             │
-│   Контрагент A          Контрагент B          Контрагент C                                   │
-│   (mTLS + client cert)  (mTLS + JWT)          (JWT only)                                     │
-└───────┬─────────────────────┬─────────────────────┬──────────────────────────────────────────┘
-        │                     │                     │
-        │ 1. Client Credentials (опционально)       │
-        └─────────────────────┼─────────────────────┘
-                              │
-                              ▼
+│   Контрагенты (mTLS + JWT): client cert + Bearer token                                       │
+└───────┬─────────────────────────────────────────────────────────────────────────────────────┘
+        │
+        │ 1. Client Credentials → JWT
+        ▼
         ┌─────────────────────────────────────────────────────────────┐
         │              AUTHORIZATION SERVER                            │
         │  (Keycloak / Spring Authorization Server / Auth0)            │
@@ -30,7 +27,7 @@
         JWT ◄──────────────────────┘
                                    │
         ┌──────────────────────────┼──────────────────────────────────┐
-        │                          │  Запрос (mTLS или Bearer JWT)    │
+        │                          │  Запрос (mTLS + Bearer JWT)      │
         │                          ▼                                  │
         │  ┌──────────────────────────────────────────────────────┐   │
         │  │  NGINX (TLS Termination, mTLS)                        │   │
@@ -64,38 +61,7 @@
 
 ### Потоки данных
 
-#### Поток 1: mTLS (клиентский сертификат)
-
-```
-Контрагент          Nginx              Gateway             Backend
-    │                  │                   │                   │
-    │  HTTPS +         │                   │                   │
-    │  client cert     │                   │                   │
-    │ ────────────────►│                   │                   │
-    │                  │  Верификация      │                   │
-    │                  │  сертификата      │                   │
-    │                  │  (CA)             │                   │
-    │                  │                   │                   │
-    │                  │  proxy_pass       │                   │
-    │                  │  + X-SSL-Client-DN: CN=cp-a-001       │
-    │                  │  + X-SSL-Client-Verify: SUCCESS       │
-    │                  │ ────────────────► │                   │
-    │                  │                   │  CN → counterparty │
-    │                  │                   │  rate limit check  │
-    │                  │                   │  audit log         │
-    │                  │                   │                   │
-    │                  │                   │  + X-Counterparty-Id
-    │                  │                   │  GET /api/v1/ops   │
-    │                  │                   │ ──────────────────►│
-    │                  │                   │                   │
-    │                  │                   │  200 OK + body     │
-    │                  │                   │ ◄──────────────────│
-    │                  │  200 OK + body    │                   │
-    │  200 OK + body   │ ◄──────────────── │                   │
-    │ ◄────────────────│                   │                   │
-```
-
-#### Поток 2: OAuth2 JWT (Client Credentials)
+#### Поток 1: mTLS + JWT (полный цикл)
 
 ```
 Контрагент       Auth Server        Nginx              Gateway             Backend
@@ -103,32 +69,26 @@
     │  POST /oauth/token               │                   │                   │
     │  client_id, client_secret        │                   │                   │
     │ ───────────────►│                │                   │                   │
-    │                 │                │                   │                   │
-    │  200 {access_token: "jwt..."}    │                   │                   │
+    │  200 {access_token}              │                   │                   │
     │ ◄────────────────                │                   │                   │
     │                 │                │                   │                   │
-    │  GET /api/v1/ops                 │                   │                   │
-    │  Authorization: Bearer <jwt>     │                   │                   │
+    │  GET /api/v1/ops + client cert + Authorization: Bearer <jwt>             │
     │ ────────────────────────────────►│                   │                   │
-    │                  │  proxy_pass   │                   │                   │
+    │                  │  mTLS verify  │                   │                   │
+    │                  │  + proxy_pass │                   │                   │
+    │                  │  X-SSL-Client-DN, X-SSL-Client-Verify                 │
     │                  │ ─────────────►│                   │                   │
-    │                  │               │  Валидация JWT    │                   │
-    │                  │               │  (JWK Set)        │                   │
-    │                  │               │  sub/client_id →  │                   │
-    │                  │               │  counterparty     │                   │
-    │                  │               │  rate limit       │                   │
-    │                  │               │  audit            │                   │
-    │                  │               │                   │                   │
-    │                  │               │  + X-Counterparty-Id                  │
-    │                  │               │  GET /api/v1/ops  │                   │
+    │                  │               │  CN → counterparty │                   │
+    │                  │               │  JWT validate      │                   │
+    │                  │               │  rate limit, audit │                   │
+    │                  │               │  + X-Counterparty-Id                   │
     │                  │               │ ─────────────────►│                   │
     │                  │               │                   │ 200 OK            │
-    │                  │               │ ◄─────────────────│                   │
-    │  200 OK          │ ◄─────────────│                   │                   │
+    │  200 OK          │ ◄─────────────│ ◄─────────────────│                   │
     │ ◄────────────────│               │                   │                   │
 ```
 
-#### Поток 3: Цепочка фильтров Gateway (один запрос)
+#### Поток 2: Цепочка фильтров Gateway (один запрос)
 
 ```
    Request → NginxMtls → JwtValid → Counterparty → RateLimit → Audit → Backend
@@ -136,7 +96,7 @@
                 │           │            │             │          │
    Headers:     │           │            │             │          │
    X-SSL-* ────►│ CN → cp   │            │             │          │
-   Bearer ────────────────►│ JWT → cp   │             │          │
+   Bearer ────────────────►│ JWT valid  │             │          │
                 │           │            │             │          │
    counterparty ◄───────────┴────────────┘             │          │
    attr set              │            │                │          │
@@ -154,7 +114,7 @@
    Response ◄─────────────────────────────────────────────────────
 ```
 
-#### Поток 4: Передача данных между компонентами
+#### Поток 3: Передача данных между компонентами
 
 ```
 ┌─────────────┐     ┌─────────────────────────────────────────────────────┐     ┌─────────────┐
@@ -162,14 +122,13 @@
 └──────┬──────┘     └──────────────────────┬──────────────────────────────┘     └──────┬──────┘
        │                                   │                                           │
        │  HTTPS                            │  HTTP (внутренняя сеть)                   │
-       │  • Client cert (mTLS)             │  • X-SSL-Client-DN                        │
-       │  • Authorization: Bearer <jwt>    │  • X-SSL-Client-Verify                    │
+       │  • Client cert (mTLS) + Bearer JWT│  • X-SSL-Client-DN, X-SSL-Client-Verify   │
        │  • Body, Headers                  │  • X-Forwarded-*, все заголовки           │
        │ ─────────────────────────────────►│ ─────────────────────────────────────────►│
        │                                   │                                           │
        │                                   │                              ┌────────────┴────────────┐
        │                                   │                              │  CounterpartyService    │
-       │                                   │                              │  • CN/client_id → cp    │
+       │                                   │                              │  • CN → counterparty   │
        │                                   │                              │  • scopes, rate_limit   │
        │                                   │                              └────────────┬────────────┘
        │                                   │                                           │
@@ -210,7 +169,7 @@
 
 | Модуль | Описание |
 |--------|----------|
-| **gateway-service** | Spring Cloud Gateway (OAuth, rate limit, audit) |
+| **gateway-service** | Spring Cloud Gateway (mTLS+JWT, rate limit, audit) |
 | **nginx-gateway** | Nginx с mTLS + Docker Compose |
 | **kong-gateway** | Альтернатива на Kong (без OAuth) |
 
@@ -218,8 +177,8 @@
 
 ## Цепочка фильтров (Spring Boot)
 
-1. **NginxMtlsIdentityFilter** — identity из X-SSL-Client-DN (после Nginx mTLS)
-2. **JwtValidationFilter** — OAuth2 JWT (Bearer token)
+1. **NginxMtlsIdentityFilter** — mTLS: identity из X-SSL-Client-DN (CN → counterparty)
+2. **JwtValidationFilter** — JWT: валидация Bearer (scope, claims)
 3. **CounterpartyContextFilter** — проверка контрагента
 4. **RateLimitFilter** — ограничение по counterparty
 5. **AuditLoggingFilter** — аудит запросов
@@ -239,16 +198,13 @@ cd nginx-gateway
 docker compose up -d
 ```
 
-**Вариант 2 — только Gateway (для разработки):**
-```bash
-cd gateway-service
-mvn spring-boot:run
-```
+**Вариант 2 — только Gateway (для отладки):**  
+Требуется Nginx для mTLS. Запуск без Nginx — только actuator, /api/** вернёт 401.
 
-## Аутентификация
+## Аутентификация (mTLS + JWT)
 
-- **mTLS** — в Nginx; CN сертификата передаётся в Gateway через X-SSL-Client-DN
-- **OAuth2 JWT** — Bearer token; требуется Authorization Server и `spring.security.oauth2.resourceserver.jwt.jwk-set-uri`
+- **mTLS** — обязательно; в Nginx; CN передаётся в Gateway через X-SSL-Client-DN
+- **JWT** — обязательно; Bearer token; `spring.security.oauth2.resourceserver.jwt.jwk-set-uri`
 
 ## Authorization Server
 

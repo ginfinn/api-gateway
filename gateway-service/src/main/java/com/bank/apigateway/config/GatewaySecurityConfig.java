@@ -8,7 +8,7 @@ import org.springframework.security.web.server.SecurityWebFilterChain;
 
 /**
  * Конфигурация безопасности для Gateway.
- * Аутентификация выполняется кастомными фильтрами (mTLS, JWT, API Key).
+ * Аутентификация: mTLS + JWT (кастомные фильтры).
  */
 @Configuration
 @EnableWebFluxSecurity

@@ -6,14 +6,15 @@ import com.bank.apigateway.service.CounterpartyService;
 import org.springframework.cloud.gateway.filter.GatewayFilterChain;
 import org.springframework.cloud.gateway.filter.GlobalFilter;
 import org.springframework.core.Ordered;
+import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Component;
 import org.springframework.web.server.ServerWebExchange;
 import reactor.core.publisher.Mono;
 
 /**
- * Извлекает identity контрагента из заголовков, которые Nginx передаёт после mTLS.
- * Nginx устанавливает X-SSL-Client-DN (Subject DN сертификата) при успешной верификации.
- * CN из DN используется как externalId для маппинга на Counterparty.
+ * mTLS + JWT: identity контрагента из заголовков Nginx (mTLS).
+ * Для /api/** требуется X-SSL-Client-Verify=SUCCESS и валидный CN.
+ * CN используется как externalId для маппинга на Counterparty.
  */
 @Component
 public class NginxMtlsIdentityFilter implements GlobalFilter, Ordered {
@@ -32,19 +33,23 @@ public class NginxMtlsIdentityFilter implements GlobalFilter, Ordered {
 
     @Override
     public Mono<Void> filter(ServerWebExchange exchange, GatewayFilterChain chain) {
+        if (!exchange.getRequest().getPath().value().startsWith("/api/")) {
+            return chain.filter(exchange);
+        }
+
         String sslVerify = exchange.getRequest().getHeaders().getFirst(SSL_CLIENT_VERIFY_HEADER);
         if (!"SUCCESS".equals(sslVerify)) {
-            return chain.filter(exchange); // mTLS не пройден — передаём в OAuth
+            return unauthorized(exchange);
         }
 
         String dn = exchange.getRequest().getHeaders().getFirst(SSL_CLIENT_DN_HEADER);
         if (dn == null || dn.isBlank()) {
-            return chain.filter(exchange);
+            return unauthorized(exchange);
         }
 
         String cn = parseCnFromDn(dn);
         if (cn == null) {
-            return chain.filter(exchange);
+            return unauthorized(exchange);
         }
 
         return counterpartyService.findByExternalId(cn, AuthType.MTLS)
@@ -57,7 +62,12 @@ public class NginxMtlsIdentityFilter implements GlobalFilter, Ordered {
                             .build();
                     return chain.filter(exchange.mutate().request(request).build());
                 })
-                .switchIfEmpty(chain.filter(exchange));
+                .switchIfEmpty(Mono.defer(() -> unauthorized(exchange)));
+    }
+
+    private Mono<Void> unauthorized(ServerWebExchange exchange) {
+        exchange.getResponse().setStatusCode(HttpStatus.UNAUTHORIZED);
+        return exchange.getResponse().setComplete();
     }
 
     private String parseCnFromDn(String dn) {

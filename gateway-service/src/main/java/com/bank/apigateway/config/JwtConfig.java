@@ -8,7 +8,7 @@ import org.springframework.security.oauth2.jwt.JwtDecoder;
 import org.springframework.security.oauth2.jwt.NimbusJwtDecoder;
 
 /**
- * Конфигурация JWT Decoder для OAuth2.
+ * Конфигурация JWT Decoder (mTLS + JWT).
  * Активируется при наличии spring.security.oauth2.resourceserver.jwt.jwk-set-uri.
  */
 @Configuration
