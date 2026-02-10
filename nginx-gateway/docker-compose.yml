@@ -1,0 +1,31 @@
+# Nginx (mTLS) → Spring Boot Gateway (OAuth, rate limit)
+# 1. Сгенерировать сертификаты: ./scripts/generate-certs.ps1  или  ./scripts/generate-certs.sh
+# 2. Собрать gateway: mvn -f ../gateway-service/pom.xml package
+# 3. Запуск: docker compose up -d
+
+services:
+  gateway:
+    build:
+      context: ..
+      dockerfile: nginx-gateway/Dockerfile.gateway
+    ports:
+      - "8080:8080"
+    environment:
+      SPRING_PROFILES_ACTIVE: docker
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8080/actuator/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+
+  nginx:
+    image: nginx:1.25-alpine
+    ports:
+      - "8443:443"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx/certs:/etc/nginx/certs:ro
+    depends_on:
+      gateway:
+        condition: service_healthy

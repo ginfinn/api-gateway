@@ -1,0 +1,11 @@
+# Локальная разработка
+spring:
+  cloud:
+    gateway:
+      routes:
+        - id: operations-local
+          uri: http://localhost:8081
+          predicates:
+            - Path=/api/v1/operations/**
+          filters:
+            - StripPrefix=2

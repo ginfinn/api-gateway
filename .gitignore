@@ -1,0 +1,15 @@
+/target/
+!.mvn/wrapper/maven-wrapper.jar
+!**/src/main/**/target/
+!**/src/test/**/target/
+.idea/
+*.iml
+*.ipr
+*.iws
+.DS_Store
+*.log
+
+# mTLS сертификаты (не коммитить)
+nginx-gateway/nginx/certs/*.key
+nginx-gateway/nginx/certs/*.crt
+nginx-gateway/nginx/certs/*.srl
