@@ -13,3 +13,7 @@
 nginx-gateway/nginx/certs/*.key
 nginx-gateway/nginx/certs/*.crt
 nginx-gateway/nginx/certs/*.srl
+openresty-gateway/nginx/certs/*.key
+openresty-gateway/nginx/certs/*.crt
+openresty-gateway/nginx/certs/*.srl
+openresty-gateway/nginx/jwt/*.pem

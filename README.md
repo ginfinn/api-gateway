@@ -171,6 +171,7 @@
 |--------|----------|
 | **gateway-service** | Spring Cloud Gateway (mTLS+JWT, rate limit, audit) |
 | **nginx-gateway** | Nginx с mTLS + Docker Compose |
+| **openresty-gateway** | Полная реализация на OpenResty (ветка `openresty-gateway`) |
 | **kong-gateway** | Альтернатива на Kong (без OAuth) |
 
 **Authorization Server** — внешний сервис (Keycloak, Spring Authorization Server, Auth0 и т.д.), в репозиторий не входит.
