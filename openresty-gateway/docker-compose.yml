@@ -1,0 +1,19 @@
+# OpenResty: полная реализация mTLS + JWT на Nginx
+# 1. ./scripts/generate-certs.ps1  или  ./scripts/generate-certs.sh
+# 2. docker compose up -d
+
+services:
+  openresty:
+    build: .
+    ports:
+      - "8443:443"
+    volumes:
+      - ./nginx/nginx.conf:/usr/local/openresty/nginx/conf/nginx.conf:ro
+      - ./nginx/certs:/etc/nginx/certs:ro
+      - ./nginx/jwt:/etc/nginx/jwt:ro
+      - ./lua:/usr/local/openresty/nginx/lua:ro
+    environment:
+      JWT_PUBLIC_KEY_PATH: /etc/nginx/jwt/public.pem
+      # Или для HS256 (тест): JWT_SECRET: your-secret
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
